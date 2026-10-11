@@ -1,4 +1,5 @@
 import os
+import sys
 
 # Headless unless asked otherwise. Many tests build and show real viewports and
 # windows; without this a local run opens every one of them on the desktop, as
@@ -12,6 +13,14 @@ if "QT_QPA_PLATFORM" not in os.environ:
     # tests). Mesa's software renderer is what CI draws with; use it here too.
     os.environ.setdefault("__GLX_VENDOR_LIBRARY_NAME", "mesa")
     os.environ.setdefault("LIBGL_ALWAYS_SOFTWARE", "1")
+
+# The offscreen platform reads fonts from QT_QPA_FONTDIR and from
+# nowhere else — Qt ships none, so on Windows the database came up
+# empty and every fixed-pitch check failed (the kind line's family,
+# the text objects' outlines). The system directory has them all.
+if (sys.platform == "win32" and os.path.isdir(r"C:\Windows\Fonts")
+        and "QT_QPA_FONTDIR" not in os.environ):
+    os.environ["QT_QPA_FONTDIR"] = r"C:\Windows\Fonts"
 
 import pytest  # noqa: E402
 
