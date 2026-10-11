@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **The Linux build ships what the tests ran on.** The AppImage used to
+  take the newest version of every library on the day it was built, so it
+  shipped Qt 6.12 while the tests still ran on 6.11. It now installs the
+  exact versions the lock file pins, and the lock is on Qt 6.12.
+
 ## 0.10.9 (2026-10-07)
 
 ### Added
