@@ -15,7 +15,9 @@ import numpy as np
 
 from . import geometry
 from .deferred import DeferredShape
-from .layers import DEFAULT_LAYER_ID, LayerManager
+from .layers import (DEFAULT_LAYER_ID, LayerManager, hatch_token_rgb,
+                     screen_width_for)
+from .layout import SectionFill
 from .tessellate import DisplayMesh, tessellate
 
 
@@ -76,6 +78,10 @@ class SceneObject:
     clip_plane: dict | None = None     # {"enabled": bool}: sections the view
     annotation: dict | None = None     # {"text": str}: model-space dot label
     linetype: str = "ByLayer"          # dash style; ByLayer -> use the layer's
+    print_width: float | None = None   # plotted mm; None -> the layer's
+    # its own section hatch, {"pattern", "angle", "spacing", "color"} as
+    # layers.section_fill_dict makes it; None -> the layer's
+    section_fill: dict | None = None
     draw_order: int = 0                # higher draws on top (breaks depth ties)
     _mesh: DisplayMesh | None = field(default=None, repr=False, compare=False)
     _bounds: tuple | None = field(default=None, repr=False, compare=False)
@@ -187,6 +193,7 @@ class Scene:
         # drawing, not about the pane you happened to ask in.
         self.dir_enabled: set[str] = set()
         self.layouts: list = []         # drafting sheets (core/layout.py)
+        self.sheet_groups: list = []    # SheetGroups the sheets sit in
         self.units: str = "mm"          # document units (utils/units.py)
         self.block_defs: dict = {}      # id -> {"name", "shapes": [TopoDS]}
         self.annot_styles: dict = {}    # name -> text/dim style overrides
@@ -305,6 +312,10 @@ class Scene:
             fields["annotation"] = dict(like.annotation)
         if like.group_id:
             fields["group_id"] = like.group_id
+        if like.print_width is not None:
+            fields["print_width"] = like.print_width
+        if like.section_fill:
+            fields["section_fill"] = dict(like.section_fill)
         if fields:
             obj = self.update(obj.id, **fields)
         return obj
@@ -457,6 +468,11 @@ class Scene:
                 self.update(obj_id, **fields)
         return len(ids)
 
+    def get_layout(self, layout_id: str):
+        """The sheet with this id, or None."""
+        return next((lay for lay in self.layouts if lay.id == layout_id),
+                    None)
+
     def get(self, obj_id: str) -> SceneObject | None:
         return self.objects.get(obj_id)
 
@@ -503,19 +519,49 @@ class Scene:
     def print_width_of(self, obj: SceneObject) -> float:
         """The pen width, in mm, a plot draws this object with.
 
-        Taken off the layer: an object plots at its layer's print width, and
-        0 means the device default, the same as Rhino's PlotWeight.
+        An object's own width if it has one, or else its layer's; 0 means
+        the device default, the same as Rhino's PlotWeight.
         """
+        if obj.print_width is not None:
+            return obj.print_width
         return self.layers.get(obj.layer_id).print_width
 
+    def screen_width_of(self, obj: SceneObject) -> float:
+        """The width an object's edges draw at on screen, in pixels.
+
+        An object with a print width of its own draws at that width the
+        way its layer would, unless the layer's screen width was set by
+        hand: then that holds for everything on the layer.
+        """
+        layer = self.layers.get(obj.layer_id)
+        if obj.print_width is None or layer.screen_pinned:
+            return layer.lineweight
+        return screen_width_for(obj.print_width)
+
     def hatch_of(self, obj: SceneObject) -> str:
-        """The fill a cut through this object is drawn with, or nothing.
+        """The fill a cut through this object is drawn with ("none": none):
+        its own section hatch's, or else its layer's.
 
         Taken off the layer, the way the print width is: what a thing is
         made of belongs to the layer it is on, so a section through it
         reads as concrete or as steel without anybody hatching it by hand.
+        One object can still be made of something else.
         """
+        if obj.section_fill:
+            return obj.section_fill["pattern"]
         return self.layers.get(obj.layer_id).hatch
+
+    def section_fill_of(self, obj: SceneObject):
+        """Everything a cut through this object is drawn with: the
+        pattern, its angle and spacing on the paper, and its colour."""
+        layer = self.layers.get(obj.layer_id)
+        own = obj.section_fill
+        if own:
+            return SectionFill(own["pattern"], own["angle"], own["spacing"],
+                               hatch_token_rgb(own["color"], layer.color))
+        return SectionFill(layer.hatch, layer.hatch_angle,
+                           layer.hatch_spacing,
+                           self.layers.hatch_rgb(layer.id))
 
     def render_color_of(self, obj: SceneObject) -> tuple[float, float, float]:
         """The colour rendered mode draws the object's surfaces in.
@@ -537,6 +583,7 @@ class Scene:
         self.layers.on_shown = self.realise_layer
         self.named_views = {}
         self.layouts = []
+        self.sheet_groups = []
         self.block_defs = {}
         self.annot_styles = {}
         self.image_planes = []
@@ -569,6 +616,7 @@ class Scene:
             "layers": self.layers.snapshot(),
             "named_views": copy.deepcopy(self.named_views),
             "layouts": [lay.clone() for lay in self.layouts],
+            "sheet_groups": copy.deepcopy(self.sheet_groups),
             "block_defs": {k: dict(v) for k, v in self.block_defs.items()},
             "annot_styles": {k: dict(v) for k, v in self.annot_styles.items()},
             "image_planes": copy.deepcopy(self.image_planes),
@@ -589,6 +637,7 @@ class Scene:
         self.layers.restore(snap["layers"])
         self.named_views = copy.deepcopy(snap.get("named_views", {}))
         self.layouts = [lay.clone() for lay in snap.get("layouts", [])]
+        self.sheet_groups = copy.deepcopy(snap.get("sheet_groups", []))
         self.block_defs = {k: dict(v) for k, v in
                            snap.get("block_defs", {}).items()}
         self.annot_styles = {k: dict(v) for k, v in
