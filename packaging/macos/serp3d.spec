@@ -61,7 +61,7 @@ app = BUNDLE(
         "CFBundleShortVersionString": "0.11.0",
         "CFBundleVersion": "0.11.0",
         "NSHighResolutionCapable": True,
-        "LSMinimumSystemVersion": "11.0",
+        "LSMinimumSystemVersion": "14.0",
         "LSApplicationCategoryType": "public.app-category.graphics-design",
         "NSHumanReadableCopyright": "MIT License · Chisomo Banzi",
         # Claim .serp so Finder offers (and can default to) this app.

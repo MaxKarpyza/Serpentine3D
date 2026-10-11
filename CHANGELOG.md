@@ -139,6 +139,10 @@
   layer first and the selection after; selecting something else lets go of
   the layer too.
 
+- **macOS 14 or newer.** The Mac disk image is built on Qt 6.12, which
+  needs macOS 14 Sonoma; 0.10.9 ran on macOS 13. Opened on an older Mac,
+  the app now says which version it needs instead of failing to start.
+
 - **The Linux build ships what the tests ran on.** The AppImage used to
   take the newest version of every library on the day it was built, so it
   shipped Qt 6.12 while the tests still ran on 6.11. It now installs the
