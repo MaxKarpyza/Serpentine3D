@@ -2,12 +2,218 @@
 
 ## Unreleased
 
+### Added
+
+- **Layers in Properties.** Pick a layer in the Layers list and Properties
+  shows it: name, colour, linetype, screen width in pixels, print width in
+  millimetres, section hatch, visible and locked, each on its own labelled
+  row instead of a narrow column. With several layers picked, a value they
+  share is shown and one they differ on is blank; setting it sets it on all
+  of them, as one undo step. "Move selected here" puts the selection onto
+  the layer, and "Select objects" selects what is on it.
+
+- **Every Properties page says what it is showing.** Each page opens the
+  same way: a mark and the kind of thing in gold ("Object", "Objects",
+  "Layer", "Detail", "Text note"), then its name, then one line of what and
+  where, such as "Solid on Default", "2 solids, 1 curve on 2 layers",
+  "3 objects on this layer" or "1:50 · frame 160 × 120 mm". The tab and
+  the header come from one description, so they always agree. That line
+  replaces the Type row.
+
+- **A layer sets its hatch's angle, spacing and colour (#40).** A layer
+  used to name its section hatch's pattern and nothing else, so every cut
+  in a drawing was hatched at 45 degrees, 2.5 mm apart, in the one grey.
+  The layer page now has Hatch angle, Hatch spacing (millimetres on the
+  printed sheet, so a 1:50 and a 1:5 detail hatch alike) and Hatch colour:
+  Ink, the near black the rest of the sheet is drawn in, the layer's own
+  colour, or one chosen for it. Angle and spacing show only for Lines and
+  Cross, and the colour row hides for None. Screen and plot draw the same
+  thing, and a flood in a colour keeps its outline. The layer command asks
+  for angle and spacing after a line pattern; a hatch drawn by hand on a
+  sheet starts from the layer's, and one dropped on a cut takes the cut's
+  angle, spacing and colour. Scripts and the assistant can set all of a
+  layer's look with `layers(action="style", style={...})`, and the scene
+  info now reports each layer's linetype, widths and hatch.
+
+- **An object can have its own section hatch and print width (#40).**
+  Colour already worked this way: an object takes its layer's unless it
+  is given one. Now hatching and print width do too, so one column among
+  the walls can be cut solid, or plot heavier, without a layer made for
+  it. On a solid's Properties page, Section hatch says "By layer (Cross)"
+  until a pattern is chosen; the object's own hatch then starts from its
+  layer's angle, spacing and colour, which get rows of their own. Print
+  width takes By layer, Default or a width in millimetres, and an object
+  with its own print width draws its edges at the matching screen width
+  unless the layer's screen width was set by hand. Copies keep what the
+  original overrode. The new `printwidth` and `sectionhatch` commands set
+  them on a selection, and `matchprops` now copies both.
+
+- **A clipping plane closes the solids it cuts (#40).** A clipping plane
+  used to leave a solid hollow, showing the backs of its own faces where
+  it was cut. Now the cut face is capped and drawn the way the solid's
+  section is: a darker shade of the solid with its hatch's lines over it
+  in their colour, flooded for Solid, plain for None. The cap is worked
+  out on the graphics card every frame, so it follows a plane as it is
+  dragged, two planes trim each other's caps, and solids of one material
+  that overlap still cap as one. The hatch lines keep still on the cut
+  while the view turns, falling about as far apart as the layer's spacing
+  asks on screen. Caps show in the shaded, rendered and analysis modes,
+  not in wireframe or ghosted.
+
+- **A Sheets list, beside Layers (#38).** The layouts were a strip of tabs
+  along the bottom, which is lost once a set runs to dozens. The panel
+  under Properties now has two tabs, Layers and Sheets. Sheets lists the
+  set the way it is bound: a number on each sheet (A-101), sheets in
+  groups that can sit inside each other, dragged to reorder or regroup,
+  in the order they print in, which is also the order of the tabs along
+  the bottom (now labelled with their numbers). A click picks a sheet and
+  Properties shows it, with its number, name, paper, orientation and
+  group, and links to open it and print it; a double-click opens it, and
+  the sheet on screen has the gold dot the current layer has in Layers.
+  Picking a sheet lets go of a picked layer, and the other way round.
+
+- **A detail can leave layers out (#38).** Each detail now has its own
+  list of layers it hides, as Rhino, Revit and Archicad set visibility
+  per view: a plan and an enlarged detail on one sheet can show different
+  layers, and the model and every other detail keep showing them. Pick a
+  detail and its Properties page lists the layers hidden in it, with Show
+  beside each and a list to hide another; a sublayer goes with its
+  parent. The screen, the PDF, the plot and the DXF all leave them out.
+
+- **Print sheets from a dialog (#38).** `print` (also on a sheet's page
+  and in the Sheets list's menu) opens a dialog listing the set with a
+  box for every sheet and group, starting with the sheets picked or the
+  one open, and prints them to a PDF file or to a printer, each sheet on
+  its own paper size and orientation. Scripts typing `print` with no
+  window still get `exportpdf`'s prompts; `exportpdf` keeps `pdf` as its
+  short name.
+
+- **Panel icons.** Properties and Layers now carry an icon at the left of
+  their title bars, sliders and a stack of sheets, so the two stacked
+  panels tell apart at a glance.
+
 ### Changed
+
+- **The Layers list is names and switches.** Each row is the layer's name,
+  an eye to show or hide it, a padlock to lock it, and its colour. The
+  Type and Print columns are gone from the list: linetype, screen width,
+  print width and section hatch are edited on the layer's page in
+  Properties, where each says what it is and in what unit. The switches
+  draw as an eye and a padlock instead of an unlabelled check box under a
+  blank header, a click anywhere in the cell flips them, and each tooltip
+  says what a click will do. Locking a layer had no button before; now it
+  is one click, and a locked layer's objects are greyed and cannot be
+  picked. A layer under a locked parent shows a dimmer padlock and names
+  the parent in its tooltip. Like the eye, the padlock on a picked row
+  switches every picked layer and keeps them picked.
+
+- **Properties and Layers share one spacing.** Set beside the layers
+  mockup they were drawn from, the panels now match it: layer rows are
+  28 px tall with a faint line between them and no frame round the list;
+  the layer new objects go on has a gold dot and the rest an empty ring,
+  so the names line up; the object count sits muted at the right end of
+  its row instead of in brackets after the name. In Properties the kind
+  line ("LAYER", "OBJECT") is a tracked monospace label, the name is a
+  step larger, a seam closes the header off from the fields, every page
+  stands 10 px in, and Select objects and Move selected here are gold
+  links rather than buttons.
+
+- **A layer's screen width follows its print width (#40).** The two
+  widths used to know nothing of each other, so a wall given a 0.7 mm pen
+  still drew on screen as thin as everything else. Now the screen width
+  is worked out from the print width, at 4 px a millimetre and never under
+  a pixel, so a 0.35 mm pen draws at the 1.4 px layers have always had,
+  0.5 mm at 2 px and 0.7 mm at 2.8 px. The layer page shows it as
+  "From print (2.8)". Type a width of your own and it stays put whatever
+  the print width does; choose From print to let go again. Layers in
+  older files whose screen width somebody changed keep it; the rest
+  follow their print width.
+
+- **The selection stays while you look at a layer.** Picking a layer no
+  longer competes with what the viewport has selected. Once both are live,
+  the Properties title becomes two tabs, the selection with a gold pointer
+  and the layer with the Layers icon in its own colour, and a click switches
+  between them. While
+  the layer is shown, the selection is drawn in a dimmed gold, so full gold
+  still means "this is what Properties is editing". Escape lets go of the
+  layer first and the selection after; selecting something else lets go of
+  the layer too.
 
 - **The Linux build ships what the tests ran on.** The AppImage used to
   take the newest version of every library on the day it was built, so it
   shipped Qt 6.12 while the tests still ran on 6.11. It now installs the
   exact versions the lock file pins, and the lock is on Qt 6.12.
+
+### Fixed
+
+- **A clipping plane cuts the way you are looking.** Drawn in Top, a
+  clipping plane now cuts away what is above it and keeps what is below,
+  as Rhino 8 does: the side toward the view it is drawn in goes. It used
+  to face whichever way its rectangle was dragged, so one diagonal cut
+  down and the other cut up. Flip still turns it round.
+
+- **Seen head on, a clipping plane says which way it cuts.** From Top, a
+  clipping plane's arrow runs straight into the screen or out of it and
+  showed as a dot, so a plane cutting down looked the same as one cutting
+  up. A ring now stands at its middle: a cross in it when the arrow runs
+  into the screen, so the plane takes away what lies between you and it,
+  and a dot when it comes out, the drafting signs for an arrow square to
+  the drawing. The arrows and the ring are drawn at a true width; drivers
+  that cap lines at one pixel drew the arrow as a hairline.
+
+- **A clipping plane can be clicked from the side.** In a shaded view a
+  click asked only for an object's faces, and a plane seen edge on has
+  none on screen, so only a selection band over a corner caught it. A
+  click that misses a face seen edge on now tries its edges, as a
+  wireframe click does. The same went for any flat surface seen edge on.
+
+- **Shift draws a square frame.** Holding Shift on the second corner of a
+  rectangle, a box's base or a clipping plane flattened the frame onto a
+  line through the first corner: Shift is the momentary ortho override, and
+  ortho keeps a pick on an axis. A clipping plane drawn that way made
+  nothing, and only letting go of Shift made anything. On a frame, Shift
+  (or ortho left on) now draws a square, its side the longer of the two
+  the cursor spans, on the side the cursor is on, in the model and on a
+  sheet. Lines and every other pick still keep to an axis.
+
+- **Scaling a clipping plane keeps it cutting.** Scaled along one axis,
+  with the gumball's handles or Scale1D, Scale2D or ScaleNU, a clipping
+  plane became a NURBS surface: still flat, but no longer read as a
+  plane, so it stopped cutting and its arrow vanished. A flat face now
+  stays a true plane under any scale or shear, and keeps the side it
+  cuts. A plane saved after an earlier build scaled it cuts again, but
+  that build lost which way round it was: if it was flipped before it was
+  scaled, it now cuts the other way, and Flip turns it back.
+
+- **Panels start below their title bars.** Properties and Layers ran 5 px
+  under their title bars, so the picked layer's highlight overlapped the
+  Layers bar and the gold kind line sat hard against the Properties bar.
+  The header at the top of every Properties page now has room above it
+  and lines up with the rows below it.
+
+- **A section hatch of None leaves the cut empty (#40).** A layer nobody
+  had set showed "None" for its section hatch, yet every cut through it
+  was hatched with lines, so choosing None changed nothing on the sheet.
+  An unset layer now says Lines, the fill its cuts have always had, so no
+  existing drawing changes. None is a choice of its own: the cut keeps its
+  outline and nothing else, on screen and on the plot. Hatching such a cut
+  by hand opens on the layer's pattern rather than on None.
+
+- **One edge between the viewports and the panels.** On builds with Qt 6.12,
+  a window layout saved by a version from before 0.10.0 pulled the viewports
+  out of their own area on launch. That left an empty strip between them
+  and the panels, with two edges to drag. Widening the panels and narrowing
+  them again, or maximising the window, opened a gap there that the
+  viewports never filled. The viewports now stay in their own area, so the
+  panel edge is the viewports' edge again and they follow it both ways.
+
+- **The app says when OpenGL fails.** When the graphics driver gave no
+  OpenGL context, after a driver update that needs a restart for example,
+  Serpentine3D opened a window that never painted: other windows showed
+  through it and the splash stayed up saying Ready, with the reason only
+  in the system log. Now a message says the drawing area cannot be shown
+  and what usually fixes it, the splash closes, and the reason is written
+  to stderr as well.
 
 ## 0.10.9 (2026-10-07)
 

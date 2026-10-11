@@ -11,8 +11,8 @@ from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QIcon, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QDockWidget, QFileDialog, QInputDialog, QMainWindow,
-    QLineEdit, QMenu, QMessageBox, QPlainTextEdit, QProgressDialog, QTabBar,
-    QTextEdit, QToolBar, QVBoxLayout, QWidget,
+    QLineEdit, QMenu, QMessageBox, QPlainTextEdit, QProgressDialog,
+    QStackedWidget, QTabBar, QTextEdit, QToolBar, QVBoxLayout, QWidget,
 )
 
 from . import commands as cmd_pkg
@@ -22,6 +22,7 @@ from .commands.base import (
     TextReq, resolve,
 )
 from .core.history import History
+from .core.layout import sheet_label
 from .core.scene import Scene
 from .core.selection import SelectionManager
 from .ui import theme
@@ -29,7 +30,10 @@ from .ui.command_line import CommandLine
 from .ui.dialogs import untether
 from .ui.display_panel import DisplaySettingsDialog
 from .ui.layers_panel import LayersPanel
-from .ui.properties import PropertiesPanel
+from .ui.properties import PropertiesPanel, SubjectTitleBar
+from .ui.dock_title import TabbedTitleBar
+from .ui.sheets_panel import SheetsPanel
+from .ui.icons import panel_icon
 from .ui.viewport import Viewport, set_default_gl_format
 
 _UNLIMITED = 16777215        # Qt's QWIDGETSIZE_MAX: "no maximum"
@@ -177,11 +181,32 @@ class MainWindow(QMainWindow):
 
         self.layers_panel = LayersPanel(self.scene, self.history,
                                         selection=self.selection)
+        # Layers and Sheets share the dock under Properties, a tab each in
+        # its title (#38): the set is a list of its own, not the bottom strip.
+        self.sheets_panel = SheetsPanel(self.scene, self.history,
+                                        make_sheet=self._new_sheet,
+                                        delete_sheet=self.delete_layout)
+        self.sheets_panel.openRequested.connect(self.switch_space)
+        self.sheets_panel.printRequested.connect(self.print_sheets)
+        self._lists = QStackedWidget()
+        self._lists.addWidget(self.layers_panel)
+        self._lists.addWidget(self.sheets_panel)
         self._layer_dock = QDockWidget("Layers", self)
         self._layer_dock.setObjectName("layersDock")
-        self._layer_dock.setWidget(self.layers_panel)
+        self._layer_dock.setWidget(self._lists)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
                            self._layer_dock)
+        self._lists_title = TabbedTitleBar(
+            [(panel_icon("layers"), "Layers"),
+             (panel_icon("sheets"), "Sheets")],
+            self._lists, self._layer_dock)
+        self._layer_dock.setTitleBarWidget(self._lists_title)
+        # Properties shows the layers or sheets picked there too, with a
+        # tab in its title for each subject once two are live.
+        self.properties.follow_layers(self.layers_panel)
+        self.properties.follow_sheets(self.sheets_panel)
+        self._prop_dock.setTitleBarWidget(
+            SubjectTitleBar(self.properties, self._prop_dock))
 
         # Display controls belong to the viewport title menu. Create their
         # modeless window only when requested, leaving this column for
@@ -759,6 +784,27 @@ class MainWindow(QMainWindow):
                 docks.append(dock)
         return docks
 
+    def _restore_panels(self, state) -> bool:
+        """Put the window's own docks back, leaving the panes where they are.
+
+        A layout saved before the panes had an area of their own names them
+        as the window's docks, and Qt 6.12 looks for a saved dock among every
+        widget inside a window, not just its own. Restoring that layout moved
+        the panes into the window's left dock area, leaving their own area
+        empty in the middle to soak up whatever width was spare: a gap
+        between panes and panels that maximising made wide. Qt knows a dock
+        by its name, so the panes go without theirs for the moment it looks.
+        """
+        panes = self._viewport_docks()
+        names = [dock.objectName() for dock in panes]
+        for dock in panes:
+            dock.setObjectName("")
+        try:
+            return self.restoreState(state)
+        finally:
+            for dock, name in zip(panes, names):
+                dock.setObjectName(name)
+
     def toggle_maximized_viewport(self, vp=None) -> bool:
         """Give one pane the whole window, or hand the layout back.
 
@@ -1051,6 +1097,15 @@ class MainWindow(QMainWindow):
             # selected: you asked to stop editing points, not to lose what
             # you were editing, so F10 brings back what was on screen.
             self.processor.run("pointsoff")
+        elif self.properties.subjects() == ["objects", "layers"] \
+                and self.properties.shown() == "layers":
+            # A look at a layer is the newer thing, the selection under it
+            # the older: let go of the layer and the objects come back
+            # into full gold. The next Escape clears them.
+            self.layers_panel.clear_picked()
+        elif self.properties.subjects() == ["objects", "sheets"] \
+                and self.properties.shown() == "sheets":
+            self.sheets_panel.clear_picked()       # the same, for a sheet
         else:
             self.selection.clear()
         for vp in self.all_viewports():
@@ -1186,6 +1241,9 @@ class MainWindow(QMainWindow):
                 vp.set_point_mode(True)
                 vp.snap_base = base
                 vp.point_axis = req.axis_lock
+                # a prompt that drags out sides is a frame, which ortho
+                # squares rather than flattening onto an axis
+                vp.point_frame = req.rubber_sides is not None
                 vp.pending_points = pending
                 vp.picked_points = picked
                 vp.point_space = space
@@ -1195,6 +1253,7 @@ class MainWindow(QMainWindow):
                 vp.set_point_mode(False)
                 vp.snap_base = None
                 vp.point_axis = None
+                vp.point_frame = False
                 vp.pending_points = []
                 vp.picked_points = []
                 vp.point_space = "model"
@@ -2163,7 +2222,7 @@ class MainWindow(QMainWindow):
             # Before restoreState, so the aux docks exist to restore onto.
             self.set_view_layout("quad")
         state = self.cfg.get("window", "state", default="")
-        if state and self.restoreState(QByteArray.fromBase64(state.encode())):
+        if state and self._restore_panels(QByteArray.fromBase64(state.encode())):
             self._docks_restored = True
         # Panels and panes are saved apart because they are put back apart:
         # the panels belong to the window and the panes to whichever space
@@ -2345,7 +2404,7 @@ class MainWindow(QMainWindow):
         # is the only record of which sheet sat below a deleted one.
         order = [self.space_tabs.tabData(i)
                  for i in range(self.space_tabs.count())]
-        want = [("model", "Model")] + [(lay.id, lay.name)
+        want = [("model", "Model")] + [(lay.id, sheet_label(lay))
                                        for lay in self.scene.layouts]
         # A drafting sheet is the one thing you would never guess was
         # behind a `+`, so the button says so until you have made one.
@@ -2458,6 +2517,11 @@ class MainWindow(QMainWindow):
             QMessageBox.StandardButton.No)
         return reply == QMessageBox.StandardButton.Yes
 
+    def print_sheets(self, ids=None):
+        """Open the print dialog on these sheets (None: the open one)."""
+        from .ui.print_dialog import PrintDialog
+        PrintDialog(self, ids).exec()
+
     def delete_layout(self, lay) -> bool:
         """Delete a sheet, asking first if anything has been put on it.
 
@@ -2533,6 +2597,7 @@ class MainWindow(QMainWindow):
             pane.update()
         self._set_active_viewport(self._pane_for_space(space_id))
         self._refresh_space_tabs()
+        self.sheets_panel.set_open(space_id)
         if space_id == "model":
             self.command_line.echo("Model space.")
         else:
@@ -2994,6 +3059,39 @@ def _offer_default_app(window):
         window.cfg.set("file_assoc", "asked", True)
 
 
+# How long after the window is up to look for the viewport's context: long
+# enough for a slow window manager to map it and Qt to make one, short enough
+# that a blank window is explained before anybody gives up on it.
+OPENGL_CHECK_MS = 2000
+
+_OPENGL_FAILED = (
+    "Serpentine3D could not get OpenGL from the graphics driver, so the "
+    "drawing area cannot be shown.\n\n"
+    "If the graphics driver has just been updated, restart the computer: "
+    "the new driver only works once the old one is no longer loaded. "
+    "Otherwise, reinstall or update the graphics driver.")
+
+
+def warn_if_opengl_failed(window, splash=None) -> bool:
+    """Say so when the viewport never got an OpenGL context.
+
+    A driver that refuses a context leaves a window that never paints, the
+    windows behind it showing through, and the reason only in the system
+    log. Returns whether it failed. The box needs no OpenGL; headless, the
+    reason goes to stderr only, so nothing waits on a box nobody sees. The
+    splash goes first: it waits for the window to paint, which it never
+    will, and would sit there saying Ready.
+    """
+    if window.viewport.isValid():
+        return False
+    if splash is not None:
+        splash.close()
+    print(f"serp3d: {_OPENGL_FAILED}", file=sys.stderr)
+    if QApplication.platformName() not in ("offscreen", "minimal", "vnc"):
+        QMessageBox.warning(window, "OpenGL could not start", _OPENGL_FAILED)
+    return True
+
+
 def run_app(app, splash=None):
     """Build the main window and run the event loop.
 
@@ -3037,6 +3135,8 @@ def run_app(app, splash=None):
     window.show()
     if splash:
         splash.finish(window)
+    QTimer.singleShot(OPENGL_CHECK_MS,
+                      lambda: warn_if_opengl_failed(window, splash))
     window.offer_recovery()
 
     for arg in app.arguments()[1:]:
